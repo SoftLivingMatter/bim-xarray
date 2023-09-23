@@ -2,7 +2,6 @@ name: bim_xarray
 channels:
   - conda-forge
 dependencies:
-  - python=3.11
   - ipython
   - ipykernel
   - pytest
@@ -25,5 +24,4 @@ dependencies:
     - aicsimageio
     - aicsimageio[nd2]
     - aicsimageio[base-imageio]
-    - "ome-types>=0.3.4,<0.4.0"
     - -e .
