@@ -14,6 +14,7 @@ from . import process
 def imread(
     fpath: Union[Path, str],
     *,
+    scene_id: Optional[Union[str, int]] = None,
     channel_names: Optional[Union[
         str,
         List[str],
@@ -61,7 +62,8 @@ def imread(
         5D data with coordinates if can be parsed from metadata, with:
         .ndim <= 5 (always squeezed)
         .attrs:
-            'ome_metadata' guaranteed (may be None)
+            'ome_metadata' guaranteed (OME.Image | None])
+            'ome_metadata_full' guaranteed (OME | None)
             'unprocessed' & 'processed' may not exist (reader-dependent)
             'physical_pixel_sizes' guaranteed (may be dict[str, None])
     """
@@ -80,15 +82,24 @@ def imread(
     #
 
     image_container = AICSImage(fpath, **kwargs)
+    if scene_id is not None:
+        image_container.set_scene(scene_id)
     # start with 5D array
     image = image_container.xarray_data
     # ome_metadata can be found reliably via reader's dedicated method
     # and not always under xarray_data.attrs['processed']
+    # also distingues full vs. scene-specific (Image) metadata
     try:
         ome_metadata = image_container.ome_metadata
     except NotImplementedError:
         ome_metadata = None
-    image.attrs['ome_metadata'] = ome_metadata
+    image.attrs['ome_metadata_full'] = ome_metadata
+    if ome_metadata is not None:
+        try:
+            image.attrs['ome_metadata'] = ome_metadata.images[image_container.current_scene_index]
+        except AttributeError:
+            image.attrs['ome_metadata'] = None
+            Warning("Cannot find scene-specific ome metadata.")
 
 
     # altering DataArray shape
@@ -130,7 +141,7 @@ def imread(
     if physcial_pixel_sizes is not None:
         pps = physcial_pixel_sizes
     elif image.attrs['ome_metadata'] is not None:
-        p = image.attrs['ome_metadata'].images[0].pixels
+        p = image.attrs['ome_metadata'].pixels
         pps = {'X': p.physical_size_x, 'Y': p.physical_size_y, 'Z': p.physical_size_z}
     else:
         try:
