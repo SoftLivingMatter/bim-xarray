@@ -63,6 +63,7 @@ def imread(
         .attrs:
             'ome_metadata' guaranteed (may be None)
             'unprocessed' & 'processed' may not exist (reader-dependent)
+            'physical_pixel_sizes' guaranteed (may be dict[str, None])
     """
 
     # checking arguments
@@ -124,9 +125,22 @@ def imread(
     # altering DataArray attrs
     #
 
+    # physical pixel sizes
+    # user-specified > ome_metadata > reader > dict with Nones
     if physcial_pixel_sizes is not None:
-        image = metadata.attach_physical_pixel_sizes(
-            image, physcial_pixel_sizes)
+        pps = physcial_pixel_sizes
+    elif image.attrs['ome_metadata'] is not None:
+        p = image.attrs['ome_metadata'].images[0].pixels
+        pps = {'X': p.physical_size_x, 'Y': p.physical_size_y, 'Z': p.physical_size_z}
+    else:
+        try:
+            pps = image_container.physical_pixel_sizes
+        except ValueError:
+            Warning("Cannot parse physical_pixel_sizes. "
+                    "Setting all to None.")
+            pps = {'X': None, 'Y': None, 'Z': None}
+    # garanteed to have a dict or PhysicalPixelSizes object
+    image = metadata.attach_physical_pixel_sizes(image, pps)
 
 
     return image
