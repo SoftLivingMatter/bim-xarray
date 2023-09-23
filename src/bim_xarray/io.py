@@ -58,7 +58,11 @@ def imread(
     Returns
     -------
     DataArray
-        5D data with coordinates if can be parsed from metadata
+        5D data with coordinates if can be parsed from metadata, with:
+        .ndim <= 5 (always squeezed)
+        .attrs:
+            'ome_metadata' guaranteed (may be None)
+            'unprocessed' & 'processed' may not exist (reader-dependent)
     """
 
     # checking arguments
@@ -74,8 +78,16 @@ def imread(
     # read data as DataArray 
     #
 
-    # start with 5D DataArray
-    image = AICSImage(fpath, **kwargs).xarray_data
+    image_container = AICSImage(fpath, **kwargs)
+    # start with 5D array
+    image = image_container.xarray_data
+    # ome_metadata can be found reliably via reader's dedicated method
+    # and not always under xarray_data.attrs['processed']
+    try:
+        ome_metadata = image_container.ome_metadata
+    except NotImplementedError:
+        ome_metadata = None
+    image.attrs['ome_metadata'] = ome_metadata
 
 
     # altering DataArray shape
