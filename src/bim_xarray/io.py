@@ -173,7 +173,7 @@ def _drop_channel_dim_for_single_object(image: DataArray, kind: Optional[str]) -
             Warning(f"Data specified as {constants.IMAGE_KIND_BINARY_OR_LABEL}, "
                     "but channel axis is not scalar. "
                     "Consider converting it to a Dataset.")
-    return image.squeeze()
+    return image
 
 
 def _update_channel_coords(image: DataArray, channel_names: Optional[Union[
