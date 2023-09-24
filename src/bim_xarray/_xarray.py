@@ -9,6 +9,8 @@ from .process import (mask,
                       remove_background)
 from .metadata import (label_channel_axis,
                        attach_physical_pixel_sizes,)
+from .plot import plot_by_channels
+from .napari import napari_view
 
 
 
@@ -41,8 +43,21 @@ class ProcessMixin:
     remove_background = _wrap_pipeable(remove_background)
 
 
+class PlotMixin:
+    plot_by_channels = _wrap_pipeable(plot_by_channels)    
+
+
+class NapariMixin:
+    napari_view = _wrap_pipeable(napari_view)
+
+
 @register_dataarray_accessor('bim')
-class BioimageDataArrayAccessor(ProcessMixin, MetadataMixin):
+class BioimageDataArrayAccessor(
+    ProcessMixin, 
+    MetadataMixin, 
+    PlotMixin, 
+    NapariMixin,
+):
 
     def __init__(self, dataarray):  # noqa: D107
         self._dataarray = dataarray
