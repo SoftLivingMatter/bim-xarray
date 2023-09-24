@@ -3,6 +3,7 @@ from pathlib import Path
 
 from xarray.core.dataarray import DataArray
 from aicsimageio import AICSImage
+from aicsimageio.readers.reader import Reader
 
 from . import metadata, process
 from .metadata import DimensionNames, PhysicalPixelSizes
@@ -21,6 +22,7 @@ def imread(
         PhysicalPixelSizes, 
         Dict[str, Optional[float]]
     ]] = None,
+    timestamps: Optional[Union[float, List[float]]] = None,
     preserve_dtype: bool = False,
     kind: Optional[str] = None,
     preprocess: Optional[Callable] = None,
@@ -169,6 +171,49 @@ def imread(
     # guaranteed to have a dict or PhysicalPixelSizes object
     image = metadata.attach_physical_pixel_sizes(image, pps)
 
+
+    # time spacing
+    # user-specified > ome_metadata
+    coords_T = {}
+    spf = None
+    if timestamps is not None:
+        if isinstance(timestamps, (float, int)):
+            spf = timestamps
+            coords_T[DimensionNames.Time] = Reader._generate_coord_array(
+                0, image.sizes[DimensionNames.Time], float(spf)
+            )
+        elif (isinstance(timestamps, List) 
+            and len(timestamps) == image.sizes[DimensionNames.Time]
+        ):
+            coords_T[DimensionNames.Time] = timestamps
+        else:
+            raise ValueError("Invalid timestamps provided.")
+    # this branch is adpated from aicsimageio.metadata.utils.get_coords_from_ome
+    elif image.attrs['ome_metadata'] is not None:
+        if image.attrs['ome_metadata'].pixels.time_increment is not None:
+            spf = image.attrs['ome_metadata'].pixels.time_increment
+            coords_T[DimensionNames.Time] = Reader._generate_coord_array(
+                0, image.sizes[DimensionNames.Time], float(spf)
+            )
+        elif image.attrs['ome_metadata'].pixels.size_t > 1:
+            if len(image.attrs['ome_metadata'].pixels.planes) > 0:
+                t_index_to_delta_map = {
+                    p.the_t: p.delta_t for p in image.attrs['ome_metadata'].pixels.planes
+                }
+                coords_T[DimensionNames.Time] = list(t_index_to_delta_map.values())
+            else:
+                coords_T[DimensionNames.Time] = None
+    # only if we can get actual time spacing, we assign it to the image
+    # if only frame number is available, we drop the time dimension coord
+    # while the dimension itself is kept (note this is different from 
+    # aicsimageio's behavior whose fallback is integer frame number)
+    if coords_T:
+        if coords_T[DimensionNames.Time] is not None:
+            image = image.assign_coords(coords_T)
+        else:
+            image = image.drop(DimensionNames.Time)
+    if spf is not None:
+        image.attrs['time_per_frame'] = spf
 
     return image
 
