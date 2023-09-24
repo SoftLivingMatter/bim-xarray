@@ -4,6 +4,7 @@ from pathlib import Path
 from xarray.core.dataarray import DataArray
 from aicsimageio import AICSImage
 from aicsimageio.readers.reader import Reader
+from aicsimageio.types import MetaArrayLike
 
 from . import metadata, process, constants
 from .metadata import DimensionNames, PhysicalPixelSizes
@@ -22,7 +23,11 @@ def imread(
         PhysicalPixelSizes, 
         Dict[str, Optional[float]]
     ]] = None,
-    timestamps: Optional[Union[float, List[float]]] = None,
+    timestamps: Optional[Union[
+        float, 
+        List[float], 
+        MetaArrayLike
+    ]] = None,
     preserve_dtype: bool = False,
     kind: Optional[str] = None,
     preprocess: Optional[Callable] = None,
@@ -99,21 +104,27 @@ def imread(
         image_container.set_scene(scene_id)
     # start with 5D array
     image = image_container.xarray_data
-    # ome_metadata can be found reliably via reader's dedicated method
-    # and not always under xarray_data.attrs['processed']
-    # also distinguishes full vs. scene-specific (Image) metadata
+
+    # OME metadata
+    # Reader-independent way of getting OME metadata is via reader's
+    # .ome_metadata property, but may not be implemented for all readers
+    # (while .xarray_data.attrs['processed'] might be available, it is
+    # not guaranteed to be OME metadata)
+    # Also, we can try to get scene-specific metadata and provide it
+    # as a separate attribute for convenience
     try:
         ome_metadata = image_container.ome_metadata
-    except NotImplementedError:
-        ome_metadata = None
-    image.attrs[constants.METADATA_OME] = ome_metadata
-    if ome_metadata is not None:
         try:
-            image.attrs[constants.METADATA_OME_SCENE] = (
-                ome_metadata.images[image_container.current_scene_index])
+            scene_meta = (
+                ome_metadata.images[image_container.current_scene_index]
+            )
         except AttributeError:
-            image.attrs[constants.METADATA_OME_SCENE] = None
+            scene_meta = None
             Warning("Cannot find scene-specific ome metadata.")
+    except NotImplementedError:
+        ome_metadata = scene_meta = None
+    image.attrs[constants.METADATA_OME] = ome_metadata
+    image.attrs[constants.METADATA_OME_SCENE] = scene_meta
 
 
     # altering DataArray shape
@@ -154,8 +165,8 @@ def imread(
     # user-specified > ome_metadata > reader > dict with Nones
     if physical_pixel_sizes is not None:
         pps = physical_pixel_sizes
-    elif image.attrs[constants.METADATA_OME_SCENE] is not None:
-        p = image.attrs[constants.METADATA_OME_SCENE].pixels
+    elif scene_meta is not None:
+        p = scene_meta.pixels
         pps = {
             'X': p.physical_size_x, 
             'Y': p.physical_size_y, 
@@ -174,46 +185,47 @@ def imread(
 
     # time spacing
     # user-specified > ome_metadata
-    coords_T = {}
-    spf = None
+    # don't rely on ome_metadata here because it may not be available
+    coords = {}
+    time_per_frame = None
     if timestamps is not None:
         if isinstance(timestamps, (float, int)):
-            spf = timestamps
-            coords_T[DimensionNames.Time] = Reader._generate_coord_array(
-                0, image.sizes[DimensionNames.Time], float(spf)
+            time_per_frame = float(timestamps)
+            coords[DimensionNames.Time] = Reader._generate_coord_array(
+                0, image.sizes[DimensionNames.Time], time_per_frame
             )
-        elif (isinstance(timestamps, List) 
+        elif (isinstance(timestamps, (list, MetaArrayLike)) 
             and len(timestamps) == image.sizes[DimensionNames.Time]
         ):
-            coords_T[DimensionNames.Time] = timestamps
+            coords[DimensionNames.Time] = timestamps
         else:
             raise ValueError("Invalid timestamps provided.")
     # this branch is adpated from aicsimageio.metadata.utils.get_coords_from_ome
-    elif image.attrs[constants.METADATA_OME_SCENE] is not None:
-        if image.attrs[constants.METADATA_OME_SCENE].pixels.time_increment is not None:
-            spf = image.attrs[constants.METADATA_OME_SCENE].pixels.time_increment
-            coords_T[DimensionNames.Time] = Reader._generate_coord_array(
-                0, image.sizes[DimensionNames.Time], float(spf)
+    # here we rely on ome_metadata
+    elif scene_meta is not None:
+        p = scene_meta.pixels
+        if p.time_increment is not None:
+            time_per_frame = float(p.time_increment)
+            coords[DimensionNames.Time] = Reader._generate_coord_array(
+                0, p.size_t, time_per_frame
             )
-        elif image.attrs[constants.METADATA_OME_SCENE].pixels.size_t > 1:
-            if len(image.attrs[constants.METADATA_OME_SCENE].pixels.planes) > 0:
-                t_index_to_delta_map = {
-                    p.the_t: p.delta_t for p in image.attrs[constants.METADATA_OME_SCENE].pixels.planes
-                }
-                coords_T[DimensionNames.Time] = list(t_index_to_delta_map.values())
-            else:
-                coords_T[DimensionNames.Time] = None
+        elif (scene_meta.pixels.size_t > 1 
+            and len(scene_meta.pixels.planes) > 0
+        ):
+            t_index_to_delta_map = {
+                p.the_t: p.delta_t for p in scene_meta.pixels.planes
+            }
+            coords[DimensionNames.Time] = list(t_index_to_delta_map.values())
     # only if we can get actual time spacing, we assign it to the image
     # if only frame number is available, we drop the time dimension coord
     # while the dimension itself is kept (note this is different from 
     # aicsimageio's behavior whose fallback is integer frame number)
-    if coords_T:
-        if coords_T[DimensionNames.Time] is not None:
-            image = image.assign_coords(coords_T)
-        else:
-            image = image.drop(DimensionNames.Time)
-    if spf is not None:
-        image.attrs['time_per_frame'] = spf
+    if coords:
+        image = image.assign_coords(coords)
+    else:
+        image = image.drop(DimensionNames.Time)
+    if time_per_frame is not None:
+        image.attrs['time_per_frame'] = time_per_frame
 
     return image
 
