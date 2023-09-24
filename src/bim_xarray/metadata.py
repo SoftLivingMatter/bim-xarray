@@ -131,7 +131,16 @@ def attach_physical_pixel_sizes(
     dataarray: DataArray, 
     pps: Union[PhysicalPixelSizes, 
                Dict[str, Optional[float]]],
+    overwrite: bool = False,
 ) -> DataArray:
+    if (constants.COORDS_SIZE_SPATIAL in dataarray.coords.keys()
+        and not overwrite
+    ):
+        raise ValueError(
+            f"DataArray already has {constants.COORDS_SIZE_SPATIAL} "
+            f"attached. Use `overwrite=True` to overwrite."
+        )
+
     # make sure we always have a dict with all three fields
     if isinstance(pps, dict):
         pps = _to_aicsimageio_PhysicalPixelSizes(pps)

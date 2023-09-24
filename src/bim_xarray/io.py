@@ -1,10 +1,13 @@
 from typing import Union, Optional, List, Dict, Any, Callable, Tuple
 from pathlib import Path
 
-from xarray.core.dataarray import DataArray
+import numpy as np
+from xarray import DataArray
 from aicsimageio import AICSImage
 from aicsimageio.readers.reader import Reader
 from aicsimageio.types import MetaArrayLike
+from aicsimageio.transforms import reshape_data
+from aicsimageio.writers import OmeTiffWriter
 
 from . import metadata, process, constants
 from .metadata import DimensionNames, PhysicalPixelSizes
@@ -130,6 +133,7 @@ def imread(
 
     # Spatial
     # Nothing enhanced yet, only attaching physical pixel sizes as attrs
+    image = _drop_z_coords_if_2d(image)
     pps = _get_physical_pixel_sizes_dict(
         physical_pixel_sizes, scene_meta, image_container
     )
@@ -189,6 +193,12 @@ def _update_channel_coords(image: DataArray, channel_names: Optional[Union[
 def _ensure_signed_dtype(image: DataArray, preserve_dtype: bool) -> DataArray:
     if not preserve_dtype:
         image = process.ensure_signed(image)
+    return image
+
+
+def _drop_z_coords_if_2d(image: DataArray) -> DataArray:
+    if image.sizes[DimensionNames.SpatialZ] == 1:
+        image = image.drop(DimensionNames.SpatialZ)
     return image
 
 
@@ -270,7 +280,46 @@ def _get_time_spacing(
     return coords, time_per_frame
 
 
-def imsave():
-    pass
+def imsave(
+    image: DataArray, 
+    fpath: str, 
+    dim_order: Optional[Union[str, List[str]]] = None, 
+    channel_names: Optional[List[str]] = None, 
+    physical_pixel_sizes: Optional[Dict] = None,
+) -> None:
+    
+    data = image.data
+
+    # trasnpose to specified dim_order if different from current dims
+    current_dims = "".join(image.dims)
+    if dim_order is None:
+        dim_order = current_dims
+    elif dim_order != current_dims:
+        data = reshape_data(image.data, current_dims, dim_order)
+
+    if (channel_names is None 
+        and DimensionNames.Channel in image.coords
+    ):
+        channel_names = np.atleast_1d(
+            image.coords[DimensionNames.Channel].data)
+
+    if physical_pixel_sizes is not None:
+        if constants.COORDS_SIZE_SPATIAL in image.attrs.keys():
+            Warning('Overwriting existing physical_pixel_sizes while saving')
+        image = metadata.attach_physical_pixel_sizes(
+            image, physical_pixel_sizes, forced=True
+        )
+    if constants.COORDS_SIZE_SPATIAL in image.attrs.keys():
+        physical_pixel_sizes = metadata._to_aicsimageio_PhysicalPixelSizes(
+            image.attrs[constants.COORDS_SIZE_SPATIAL]
+        )
+
+    OmeTiffWriter.save(
+        data,
+        fpath, 
+        dim_order=dim_order, 
+        channel_names=channel_names, 
+        physical_pixel_sizes=physical_pixel_sizes,
+    )
 
 imwrite = imsave
