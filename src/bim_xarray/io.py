@@ -126,8 +126,8 @@ def imread(
     )
     if coords:
         image = image.assign_coords(coords)
-    else:
-        image = image.drop(DimensionNames.Time)
+    elif DimensionNames.Time in image.coords:
+        image = image.drop_vars(DimensionNames.Time)
     if time_per_frame is not None:
         image.attrs[constants.COORDS_SIZE_T] = time_per_frame
 
@@ -197,8 +197,10 @@ def _ensure_signed_dtype(image: DataArray, preserve_dtype: bool) -> DataArray:
 
 
 def _drop_z_coords_if_2d(image: DataArray) -> DataArray:
-    if image.sizes[DimensionNames.SpatialZ] == 1:
-        image = image.drop(DimensionNames.SpatialZ)
+    if (image.sizes[DimensionNames.SpatialZ] == 1
+        and DimensionNames.SpatialZ in image.coords
+    ):
+        image = image.drop_vars(DimensionNames.SpatialZ)
     return image
 
 
