@@ -5,7 +5,7 @@ from xarray.core.dataarray import DataArray
 from aicsimageio import AICSImage
 from aicsimageio.readers.reader import Reader
 
-from . import metadata, process
+from . import metadata, process, constants
 from .metadata import DimensionNames, PhysicalPixelSizes
 
 
@@ -106,13 +106,13 @@ def imread(
         ome_metadata = image_container.ome_metadata
     except NotImplementedError:
         ome_metadata = None
-    image.attrs['ome_metadata_full'] = ome_metadata
+    image.attrs[constants.METADATA_OME] = ome_metadata
     if ome_metadata is not None:
         try:
-            image.attrs['ome_metadata'] = (
+            image.attrs[constants.METADATA_OME_SCENE] = (
                 ome_metadata.images[image_container.current_scene_index])
         except AttributeError:
-            image.attrs['ome_metadata'] = None
+            image.attrs[constants.METADATA_OME_SCENE] = None
             Warning("Cannot find scene-specific ome metadata.")
 
 
@@ -154,8 +154,8 @@ def imread(
     # user-specified > ome_metadata > reader > dict with Nones
     if physical_pixel_sizes is not None:
         pps = physical_pixel_sizes
-    elif image.attrs['ome_metadata'] is not None:
-        p = image.attrs['ome_metadata'].pixels
+    elif image.attrs[constants.METADATA_OME_SCENE] is not None:
+        p = image.attrs[constants.METADATA_OME_SCENE].pixels
         pps = {
             'X': p.physical_size_x, 
             'Y': p.physical_size_y, 
@@ -189,16 +189,16 @@ def imread(
         else:
             raise ValueError("Invalid timestamps provided.")
     # this branch is adpated from aicsimageio.metadata.utils.get_coords_from_ome
-    elif image.attrs['ome_metadata'] is not None:
-        if image.attrs['ome_metadata'].pixels.time_increment is not None:
-            spf = image.attrs['ome_metadata'].pixels.time_increment
+    elif image.attrs[constants.METADATA_OME_SCENE] is not None:
+        if image.attrs[constants.METADATA_OME_SCENE].pixels.time_increment is not None:
+            spf = image.attrs[constants.METADATA_OME_SCENE].pixels.time_increment
             coords_T[DimensionNames.Time] = Reader._generate_coord_array(
                 0, image.sizes[DimensionNames.Time], float(spf)
             )
-        elif image.attrs['ome_metadata'].pixels.size_t > 1:
-            if len(image.attrs['ome_metadata'].pixels.planes) > 0:
+        elif image.attrs[constants.METADATA_OME_SCENE].pixels.size_t > 1:
+            if len(image.attrs[constants.METADATA_OME_SCENE].pixels.planes) > 0:
                 t_index_to_delta_map = {
-                    p.the_t: p.delta_t for p in image.attrs['ome_metadata'].pixels.planes
+                    p.the_t: p.delta_t for p in image.attrs[constants.METADATA_OME_SCENE].pixels.planes
                 }
                 coords_T[DimensionNames.Time] = list(t_index_to_delta_map.values())
             else:
