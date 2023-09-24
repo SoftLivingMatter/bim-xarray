@@ -133,6 +133,7 @@ def imread(
 
     # Spatial
     # Nothing enhanced yet, only attaching physical pixel sizes as attrs
+    image = _drop_z_coords_if_2d(image)
     pps = _get_physical_pixel_sizes_dict(
         physical_pixel_sizes, scene_meta, image_container
     )
@@ -192,6 +193,12 @@ def _update_channel_coords(image: DataArray, channel_names: Optional[Union[
 def _ensure_signed_dtype(image: DataArray, preserve_dtype: bool) -> DataArray:
     if not preserve_dtype:
         image = process.ensure_signed(image)
+    return image
+
+
+def _drop_z_coords_if_2d(image: DataArray) -> DataArray:
+    if image.sizes[DimensionNames.SpatialZ] == 1:
+        image = image.drop(DimensionNames.SpatialZ)
     return image
 
 
