@@ -1,14 +1,11 @@
-from typing import Any, Callable, Optional, Union, Dict, List
-
+from typing import Union, Optional, List, Dict, Any, Callable
 from pathlib import Path
 
-from xarray import DataArray
+from xarray.core.dataarray import DataArray
 from aicsimageio import AICSImage
-from aicsimageio.types import PhysicalPixelSizes
-from aicsimageio.dimensions import DimensionNames
 
-from . import metadata
-from . import process
+from . import metadata, process
+from .metadata import DimensionNames, PhysicalPixelSizes
 
 
 def imread(
@@ -20,7 +17,7 @@ def imread(
         List[str],
         Dict[str, Optional[str]],
     ]] = None,
-    physcial_pixel_sizes: Optional[Union[
+    physical_pixel_sizes: Optional[Union[
         PhysicalPixelSizes, 
         Dict[str, Optional[float]]
     ]] = None,
@@ -29,32 +26,35 @@ def imread(
     preprocess: Optional[Callable] = None,
     **kwargs: Any,
 ) -> DataArray:
-    """Read image from file into 5D DataArray.
+    """
+    Read image from file into 5D DataArray.
 
-    Wraps around aicsimageio.AICSImage with sensible defaults. Primary 
-    use is to return xarray.DataArray with ome scene-metadata always 
-    exposed.
+    This function wraps around `aicsimageio.AICSImage` with sensible 
+    defaults. Its primary use is to return an `xarray.DataArray` with
+    OME scene-metadata always exposed.
 
     Parameters
     ----------
     fpath : Union[Path, str]
-        path or uri to image
+        Path or URI to image.
+    scene_id : Optional[Union[str, int]], optional
+        ID of the scene to read, by default None.
     channel_names : Optional[Union[ str, List[str], Dict[str, Optional[str]], ]], optional
-        list of str for each channel (must match exact number of channels),
-        or dict mapping optical config to channel names (can skip channels),
-        by default None
-    physcial_pixel_sizes : Optional[Union[ PhysicalPixelSizes, Dict[str, Optional[float]] ]], optional
-        spatial dimension pixel sizes with unit in micron, keys other
-        than 'X', 'Y', and 'Z' will ignored. by default None
+        List of strings for each channel (must match exact number of 
+        channels), or dict mapping optical config to channel names 
+        (can skip channels), by default None.
+    physical_pixel_sizes : Optional[Union[ PhysicalPixelSizes, Dict[str, Optional[float]] ]], optional
+        Spatial dimension pixel sizes with unit in micron, keys other
+        than 'X', 'Y', and 'Z' will be ignored, by default None.
     preserve_dtype : bool, optional
-        strictly preserve original dtype and prevent casting unsigned 
-        to signed integers, by default False
+        Strictly preserve original dtype and prevent casting unsigned 
+        to signed integers, by default False.
     kind : Optional[str], optional
-        'intensity' ('i') or 'object' ('o'), by default None
+        'intensity' ('i') or 'object' ('o'), by default None.
     preprocess : Optional[Callable], optional
-        not supported yet, by default None
+        Not supported yet, by default None.
     kwargs : 
-        keyword arguments to pass to aicsimageio.AICSImage. 
+        Keyword arguments to pass to `aicsimageio.AICSImage`. 
 
     Returns
     -------
@@ -62,12 +62,23 @@ def imread(
         5D data with coordinates if can be parsed from metadata, with:
         .ndim <= 5 (always squeezed)
         .attrs:
-            'ome_metadata' guaranteed (OME.Image | None])
+            'ome_metadata' guaranteed, scene-specific (OME.Image | None])
             'ome_metadata_full' guaranteed (OME | None)
             'unprocessed' & 'processed' may not exist (reader-dependent)
             'physical_pixel_sizes' guaranteed (may be dict[str, None])
-    """
 
+    Raises
+    ------
+    NotImplementedError
+        If `preprocess` is not None.
+
+    Warning
+    -------
+    If `ome_metadata` cannot be found.
+    If `kind` is 'object' but channel axis is not singleton.
+    If `physical_pixel_sizes` cannot be parsed.
+
+    """
     # checking arguments
     #
 
@@ -88,7 +99,7 @@ def imread(
     image = image_container.xarray_data
     # ome_metadata can be found reliably via reader's dedicated method
     # and not always under xarray_data.attrs['processed']
-    # also distingues full vs. scene-specific (Image) metadata
+    # also distinguishes full vs. scene-specific (Image) metadata
     try:
         ome_metadata = image_container.ome_metadata
     except NotImplementedError:
@@ -96,7 +107,8 @@ def imread(
     image.attrs['ome_metadata_full'] = ome_metadata
     if ome_metadata is not None:
         try:
-            image.attrs['ome_metadata'] = ome_metadata.images[image_container.current_scene_index]
+            image.attrs['ome_metadata'] = (
+                ome_metadata.images[image_container.current_scene_index])
         except AttributeError:
             image.attrs['ome_metadata'] = None
             Warning("Cannot find scene-specific ome metadata.")
@@ -125,12 +137,12 @@ def imread(
     #
 
     # if not strictly preserving dtype, convert to signed dtype to
-    # make it safe for downstream ariethmetic operations 
+    # make it safe for downstream arithmetic operations 
     if not preserve_dtype:
         image = process.ensure_signed(image)
 
     if preprocess is not None:
-        image.data = preprocess(image.data)
+        raise NotImplementedError("Preprocessing not supported yet.")
 
 
     # altering DataArray attrs
@@ -138,11 +150,15 @@ def imread(
 
     # physical pixel sizes
     # user-specified > ome_metadata > reader > dict with Nones
-    if physcial_pixel_sizes is not None:
-        pps = physcial_pixel_sizes
+    if physical_pixel_sizes is not None:
+        pps = physical_pixel_sizes
     elif image.attrs['ome_metadata'] is not None:
         p = image.attrs['ome_metadata'].pixels
-        pps = {'X': p.physical_size_x, 'Y': p.physical_size_y, 'Z': p.physical_size_z}
+        pps = {
+            'X': p.physical_size_x, 
+            'Y': p.physical_size_y, 
+            'Z': p.physical_size_z
+        }
     else:
         try:
             pps = image_container.physical_pixel_sizes
@@ -150,7 +166,7 @@ def imread(
             Warning("Cannot parse physical_pixel_sizes. "
                     "Setting all to None.")
             pps = {'X': None, 'Y': None, 'Z': None}
-    # garanteed to have a dict or PhysicalPixelSizes object
+    # guaranteed to have a dict or PhysicalPixelSizes object
     image = metadata.attach_physical_pixel_sizes(image, pps)
 
 
