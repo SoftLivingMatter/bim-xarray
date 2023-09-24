@@ -4,6 +4,8 @@ from xarray import DataArray
 from aicsimageio.types import PhysicalPixelSizes
 from aicsimageio.dimensions import DimensionNames
 
+from . import constants
+
 
 # Image Utility Types
 # Mirrors the pattern of aicsimageio.types.PhysicalPixelSizes
@@ -135,7 +137,7 @@ def attach_physical_pixel_sizes(
         pps = _to_aicsimageio_PhysicalPixelSizes(pps)
     pps = _from_aicsimageio_PhysicalPixelSizes(pps)
 
-    return dataarray.assign_attrs({'physical_pixel_sizes': pps})
+    return dataarray.assign_attrs({constants.COORDS_SIZE_SPATIAL: pps})
 
 
 def attach_time_increment():
