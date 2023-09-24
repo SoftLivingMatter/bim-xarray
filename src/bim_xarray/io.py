@@ -28,6 +28,38 @@ def imread(
     preprocess: Optional[Callable] = None,
     **kwargs: Any,
 ) -> DataArray:
+    """Read image from file into 5D DataArray.
+
+    Wraps around aicsimageio.AICSImage with sensible defaults. Primary 
+    use is to return xarray.DataArray with ome scene-metadata always 
+    exposed.
+
+    Parameters
+    ----------
+    fpath : Union[Path, str]
+        path or uri to image
+    channel_names : Optional[Union[ str, List[str], Dict[str, Optional[str]], ]], optional
+        list of str for each channel (must match exact number of channels),
+        or dict mapping optical config to channel names (can skip channels),
+        by default None
+    physcial_pixel_sizes : Optional[Union[ PhysicalPixelSizes, Dict[str, Optional[float]] ]], optional
+        spatial dimension pixel sizes with unit in micron, keys other
+        than 'X', 'Y', and 'Z' will ignored. by default None
+    preserve_dtype : bool, optional
+        strictly preserve original dtype and prevent casting unsigned 
+        to signed integers, by default False
+    kind : Optional[str], optional
+        'intensity' ('i') or 'object' ('o'), by default None
+    preprocess : Optional[Callable], optional
+        not supported yet, by default None
+    kwargs : 
+        keyword arguments to pass to aicsimageio.AICSImage. 
+
+    Returns
+    -------
+    DataArray
+        5D data with coordinates if can be parsed from metadata
+    """
 
     # checking arguments
     #
@@ -49,21 +81,15 @@ def imread(
     # altering DataArray shape
     #
 
-    # remove singleton dim but original coord label will remain
-    image = image.squeeze(drop=False)
-
-
     # altering DataArray coordinates
     #
-    if (channel_names is not None 
-        and DimensionNames.Channel in image.coords
-    ):
+    if channel_names is not None:
         image = metadata.label_channel_axis(image, channel_names)
 
     # remove channel label for object data (binary/label)
     # if it has only a single channel label
     if kind == 'object':
-        if DimensionNames.Channel not in image.dims:
+        if image.sizes[DimensionNames.Channel] == 1:
             image = image.drop_vars(DimensionNames.Channel)
         else:
             Warning("Data specified as object, but channel axis "
