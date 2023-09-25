@@ -67,9 +67,12 @@ def _factor_to_default_unit_spatial(unit) -> Optional[float]:
 
 def get_pixel_size_conversion_factors(scene_meta) -> Dict[str, Optional[float]]:
     units = get_pixel_size_units(scene_meta)
+    p = scene_meta.pixels
+    sizes = {'X': p.physical_size_x, 'Y': p.physical_size_y, 'Z': p.physical_size_z}
     return {
         k: _factor_to_default_unit_spatial(v) 
         for k, v in units.items()
+        if sizes[k] is not None
     }
 
 
