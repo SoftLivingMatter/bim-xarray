@@ -132,12 +132,14 @@ def imread(
         image.attrs[constants.COORDS_SIZE_T] = time_per_frame
 
     # Spatial
-    # Nothing enhanced yet, only attaching physical pixel sizes as attrs
+    # If only "pixel" info is available, spatial coords will be dropped
+    # (this differs from aicsimageio's default behavior)
     image = _drop_z_coords_if_2d(image)
     pps = _get_physical_pixel_sizes_dict(
         physical_pixel_sizes, scene_meta, image_container
     )
     image = metadata.attach_physical_pixel_sizes(image, pps)
+    image = _ensure_spatial_coords_in_default_units(image, scene_meta, pps)
 
 
     # Array data processing
@@ -207,8 +209,11 @@ def _drop_z_coords_if_2d(image: DataArray) -> DataArray:
 def _get_physical_pixel_sizes_dict(
     physical_pixel_sizes, scene_meta, image_container,
 ) -> Union[PhysicalPixelSizes, Dict[str, Optional[float]]]:
-    # order: user-specified > ome_metadata > reader > dict with Nones
-    
+    # order: user-specified > ome_metadata > dict with Nones
+    # no longer consider getting from reader's attribute directly
+    # because we want to ensure able to get units from ome
+    pps = {'X': None, 'Y': None, 'Z': None}
+
     # input physical_pixel_sizes can be either
     #    1. a dict with none or some keys including 'X', 'Y', 'Z' and
     #       values as floats or None
@@ -217,22 +222,48 @@ def _get_physical_pixel_sizes_dict(
         pps = physical_pixel_sizes
     # or we make a dict from scene-specific ome metadata
     elif scene_meta is not None:
-        p = scene_meta.pixels
-        pps = {
-            'X': p.physical_size_x, 
-            'Y': p.physical_size_y, 
-            'Z': p.physical_size_z
-        }
-    # or we get it from the reader's attribute, and if that fails,
-    # we make a dict with all Nones
-    else:
-        try:
-            pps = image_container.physical_pixel_sizes
-        except ValueError:
-            Warning("Cannot parse physical_pixel_sizes. "
-                    "Setting all to None.")
-            pps = {'X': None, 'Y': None, 'Z': None}
+        f = units.get_pixel_size_conversion_factors(scene_meta)
+        if any(f.values()):
+            p = scene_meta.pixels
+            pps = {
+                'X': p.physical_size_x * f['X'] if f['X'] else None,
+                'Y': p.physical_size_y * f['Y'] if f['Y'] else None,
+                'Z': p.physical_size_z * f['Z'] if f['Z'] else None,
+            }
+
     return pps
+
+
+def _ensure_spatial_coords_in_default_units(
+    image: DataArray,
+    scene_meta,
+    pps: Union[PhysicalPixelSizes, Dict[str, Optional[float]]],
+) -> DataArray:
+    # modified from aicsimageio.metadata.utils.get_coords_from_ome
+    coords = {}
+    if pps['Z'] is not None and scene_meta.pixels.size_z > 1:
+        coords[DimensionNames.SpatialZ] = Reader._generate_coord_array(
+            0, scene_meta.pixels.size_z, pps['Z']
+        )
+    if pps['Y'] is not None and scene_meta.pixels.size_y > 1:
+        coords[DimensionNames.SpatialY] = Reader._generate_coord_array(
+            0, scene_meta.pixels.size_y, pps['Y']
+        )
+    if pps['X'] is not None and scene_meta.pixels.size_x > 1:
+        coords[DimensionNames.SpatialX] = Reader._generate_coord_array(
+            0, scene_meta.pixels.size_x, pps['X']
+        )
+
+    # only coords in default units will be added
+    possible_spatial_coords_names = [
+        DimensionNames.SpatialX, DimensionNames.SpatialY, DimensionNames.SpatialZ
+    ]
+    existing_spatial_coords_names = [
+        d for d in possible_spatial_coords_names if d in image.coords
+    ]
+    image = image.drop_vars(existing_spatial_coords_names)
+    image = image.assign_coords(coords)
+    return image
 
 
 def _get_time_spacing(
