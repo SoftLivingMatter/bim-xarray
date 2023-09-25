@@ -41,7 +41,11 @@ def imread(
 
     This function wraps around `aicsimageio.AICSImage` with sensible 
     defaults. Its primary use is to return an `xarray.DataArray` with
-    OME scene-metadata always exposed.
+    OME scene-metadata always exposed, and coordinates always in 
+    default units (otherwise dropped): microns and seconds.
+
+    If you want to use the more general reader without these defaults
+    or assumptions, use `aicsimageio.AICSImage` directly.
 
     Parameters
     ----------
@@ -90,8 +94,6 @@ def imread(
     -------
     If `ome_metadata` cannot be found.
     If `kind` is 'object' but channel axis is not singleton.
-    If `physical_pixel_sizes` cannot be parsed.
-
     """
     # Resolve shorthands    
     if kind == constants.IMAGE_KIND_INTENSITY_SHORT:
