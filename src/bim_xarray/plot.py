@@ -43,9 +43,9 @@ def plot_by_channels(
         single_channel = dataarray.sel(
             {DimensionNames.Channel: channel}, drop=False,
         )
-        single_channel.plot.imshow(
-            origin="upper", ax=ax, cmap=cmap, **kwargs
-        )
+        imshow_kwargs = dict(origin="upper", ax=ax, cmap=cmap)
+        imshow_kwargs.update(kwargs)
+        single_channel.plot.imshow(**imshow_kwargs)
     
     fig.set_tight_layout(True)
     return fig
