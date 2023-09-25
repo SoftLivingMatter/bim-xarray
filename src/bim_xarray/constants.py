@@ -7,6 +7,7 @@ METADATA_OME_SCENE = "ome_metadata"
 
 COORDS_SIZE_SPATIAL = "physical_pixel_sizes"
 COORDS_SIZE_T = "time_per_frame"
+CHANNEL_COLORS = "colors"
 
 IMAGE_KIND_INTENSITY = "intensity"
 IMAGE_KIND_BINARY_OR_LABEL = "object"

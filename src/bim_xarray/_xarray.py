@@ -8,7 +8,8 @@ from .process import (mask,
                       ensure_signed,
                       remove_background)
 from .metadata import (label_channel_axis,
-                       attach_physical_pixel_sizes,)
+                       attach_physical_pixel_sizes,
+                       attach_channel_colors,)
 from .plot import plot_by_channels
 from .napari import napari_view
 
@@ -33,6 +34,7 @@ def _wrap_pipeable(func):
 class MetadataMixin:
     label_channel_axis = _wrap_pipeable(label_channel_axis)
     attach_physical_pixel_sizes = _wrap_pipeable(attach_physical_pixel_sizes)
+    attach_channel_colors = _wrap_pipeable(attach_channel_colors)
 
 
 class ProcessMixin:

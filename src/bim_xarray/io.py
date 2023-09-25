@@ -8,6 +8,7 @@ from aicsimageio.readers.reader import Reader
 from aicsimageio.types import MetaArrayLike
 from aicsimageio.transforms import reshape_data
 from aicsimageio.writers import OmeTiffWriter
+from ome_types import model as ome_model
 
 from . import metadata, process, constants, units
 from .metadata import DimensionNames, PhysicalPixelSizes
@@ -84,6 +85,7 @@ def imread(
             'unprocessed' & 'processed' may not exist (reader-dependent)
             'physical_pixel_sizes' guaranteed (may be dict[str, None])
             'time_per_frame' may not exist
+            'colors' may not exist (dict mapping channel name to rgb(a) tuple)
 
     Raises
     ------
@@ -119,6 +121,7 @@ def imread(
     # Channel
     image = _update_channel_coords(image, channel_names)
     image = _drop_channel_dim_for_single_object(image, kind)
+    image = _attach_channel_colors(image, scene_meta)
     
     # Time
     # If only "frame" info is available, time coords will be dropped
@@ -192,6 +195,26 @@ def _update_channel_coords(image: DataArray, channel_names: Optional[Union[
     if channel_names is not None:
         image = metadata.label_channel_axis(image, channel_names)
     return image
+
+
+def _attach_channel_colors(
+    image: DataArray, 
+    scene_meta: Optional[ome_model.Image]
+) -> DataArray:
+    if scene_meta is None:
+        return image
+    
+    colors_list = _get_channel_colors(scene_meta)
+    return metadata.attach_channel_colors(image, colors_list)
+
+
+def _get_channel_colors(scene_meta: ome_model.Image) -> List[Optional[Tuple]]:
+    channels = scene_meta.pixels.channels
+    colors = [
+        c.color.as_rgb_tuple() if c is not None else None 
+        for c in channels
+    ]
+    return colors
 
 
 def _ensure_signed_dtype(image: DataArray, preserve_dtype: bool) -> DataArray:

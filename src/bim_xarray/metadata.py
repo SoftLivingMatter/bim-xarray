@@ -1,5 +1,6 @@
 from typing import Dict, NamedTuple, Optional, Union, List
 
+from numpy import atleast_1d
 from xarray import DataArray
 from aicsimageio.types import PhysicalPixelSizes
 from aicsimageio.dimensions import DimensionNames
@@ -153,7 +154,51 @@ def attach_time_increment():
     raise NotImplementedError
 
 
-def attach_channel_colors():
-    raise NotImplementedError
+def attach_channel_colors(
+    dataarray: DataArray,
+    colors
+):
+    # ensure we have channel dimension to work with. currently 
+    # dataarray might not have channel dimension even when it has 
+    # channel axis label. (mostly after a .squeeze() call)
+    if DimensionNames.Channel not in dataarray.dims:
+        dataarray = dataarray.expand_dims(DimensionNames.Channel)
+        need_to_squeeze_channel = True
+    else:
+        need_to_squeeze_channel = False
+
+    # if a dict is given, worst case we will use None
+    if isinstance(colors, Dict):
+        colors = [
+            colors[ch] if ch in colors else None
+            for ch in dataarray.coords[DimensionNames.Channel].values
+        ]  
+    # if a list is given, it needs to have a matching length of 
+    # channel coords
+    elif (isinstance(colors, List) 
+          and len(colors) == dataarray.coords[DimensionNames.Channel].size
+    ):
+        colors = colors
+    # if a string is given, there should be only one original label
+    elif (isinstance(colors, str)
+          and dataarray.coords[DimensionNames.Channel].size == 1
+    ):
+        colors = [colors]
+    else:
+        raise ValueError("Invalid channel_names provided")
+    
+
+    # we want a dictionary mapping channel names to colors
+    colors_dict = dict(zip(
+        atleast_1d(dataarray.coords[DimensionNames.Channel]),
+        colors
+    ))
+
+    dataarray = dataarray.assign_attrs({constants.CHANNEL_COLORS: colors_dict})
+
+    if need_to_squeeze_channel:
+        dataarray = dataarray.squeeze(dim=DimensionNames.Channel, drop=False)
+
+    return dataarray
 
 
