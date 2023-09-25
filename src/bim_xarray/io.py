@@ -9,7 +9,7 @@ from aicsimageio.types import MetaArrayLike
 from aicsimageio.transforms import reshape_data
 from aicsimageio.writers import OmeTiffWriter
 
-from . import metadata, process, constants
+from . import metadata, process, constants, units
 from .metadata import DimensionNames, PhysicalPixelSizes
 
 
@@ -268,17 +268,21 @@ def _get_time_spacing(
     elif scene_meta is not None:
         p = scene_meta.pixels
         if p.time_increment is not None:
-            time_per_frame = float(p.time_increment)
-            coords[DimensionNames.Time] = Reader._generate_coord_array(
-                0, p.size_t, time_per_frame
-            )
+            f = units.get_time_increment_conversion_factor(scene_meta)
+            if f is not None:
+                time_per_frame = float(p.time_increment) * f
+                coords[DimensionNames.Time] = Reader._generate_coord_array(
+                    0, p.size_t, time_per_frame
+                )
         elif (scene_meta.pixels.size_t > 1 
             and len(scene_meta.pixels.planes) > 0
         ):
-            t_index_to_delta_map = {
-                p.the_t: p.delta_t for p in scene_meta.pixels.planes
-            }
-            coords[DimensionNames.Time] = list(t_index_to_delta_map.values())
+            f = units.get_delta_t_conversion_factor(scene_meta)
+            if f is not None:
+                t_index_to_delta_map = {
+                    p.the_t: p.delta_t * f for p in scene_meta.pixels.planes
+                }
+                coords[DimensionNames.Time] = list(t_index_to_delta_map.values())
     return coords, time_per_frame
 
 
