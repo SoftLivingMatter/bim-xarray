@@ -209,9 +209,15 @@ def _attach_channel_colors(
 
 
 def _get_channel_colors(scene_meta: ome_model.Image) -> List[Optional[Tuple]]:
+
+    def pydantic_color_to_normalized_rgba(color):
+        rgba_255 = color.as_rgb_tuple()
+        return tuple(float(x) / 255 for x in rgba_255)
+
     channels = scene_meta.pixels.channels
     colors = [
-        c.color.as_rgb_tuple() if c is not None else None 
+        pydantic_color_to_normalized_rgba(c.color) 
+        if c.color is not None else None 
         for c in channels
     ]
     return colors
