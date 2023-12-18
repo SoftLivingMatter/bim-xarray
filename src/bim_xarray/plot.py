@@ -35,31 +35,43 @@ def plot_by_channels(
         dataarray = dataarray.expand_dims(DimensionNames.Channel)
     # now dim: C + at most 2D
     
+    # list of channels to plot
+    channel_list = atleast_1d(dataarray.coords[DimensionNames.Channel].values)
     
-    # colormaps
+    # Generate the colormaps to use for each channel
     cmaps = _generate_cmaps(cmap, dataarray)
 
-    # plotting. populate individual channel images to use automatic
-    # scaling for better default contrast
+    # Process any additional keyword arguments to align them with the 
+    # channel list
+    processed_kwargs_list = [{} for _ in channel_list]
+    for key, value in kwargs.items():
+        processed_values = _align_input_to_channel_list(value, channel_list)
+        for i, processed_value in enumerate(processed_values):
+            processed_kwargs_list[i][key] = processed_value
+
+
+    # plotting. populate individual channel images to use each own's
+    # colormap and kwargs.
     nch = dataarray.sizes[DimensionNames.Channel]
-    fig, axs = plt.subplots(1, nch, 
+    fig, axs = plt.subplots(nrows=1, ncols=nch, 
                             figsize=(nch * axsize[0], axsize[1]))       
     
-    for channel, ax, cmap in zip(
-        atleast_1d(dataarray.coords[DimensionNames.Channel].values), 
-        atleast_1d(axs),
-        atleast_1d(cmaps),
+    for channel, ax, cmap, processed_kwargs in zip(*map(atleast_1d, 
+        [channel_list, axs, cmaps, processed_kwargs_list])
     ):
-        if cmap is None:
-            cmap = "Greys_r"
-        
         # select one channel and keep its label so xarray will include
         # nice channel time in subplot title
         single_channel = dataarray.sel(
             {DimensionNames.Channel: channel}, drop=False,
         )
-        imshow_kwargs = dict(origin="upper", ax=ax, cmap=cmap)
-        imshow_kwargs.update(kwargs)
+        cmap = "Greys_r" if cmap is None else cmap
+        imshow_kwargs = dict(ax=ax, origin="upper", cmap=cmap)
+        imshow_kwargs.update(processed_kwargs)
+        
+        # specify aspect ratio first so xarray.plot.imshow will create
+        # a colorbar of height always matching to the image height
+        # NOTE: xarray.plot.imshow doesn't support `aspect` kwarg
+        ax.set_aspect("equal")
         single_channel.plot.imshow(**imshow_kwargs)
     
     fig.set_tight_layout(True)
@@ -104,22 +116,10 @@ def _generate_cmaps(
         except KeyError:
             Warning("Cannot detect channel colors. Using default colormap.")
             cmaps = ["Greys_r"] * nch
-    elif isinstance(cmap, (str, tuple)):
-        cmaps = [cmap] * nch
-    elif isinstance(cmap, list):
-        if len(cmap) != nch:
-            raise ValueError(
-                f"Length of cmap list {len(cmap)} must match number "
-                f"of channels: {nch}"
-            )
-        cmaps = cmap
-    elif isinstance(cmap, dict):
-        cmaps = [
-            cmap[ch] if (ch in cmap) else None
-            for ch in atleast_1d(dataarray.coords[DimensionNames.Channel]) 
-        ]
     else:
-        raise ValueError()
+        cmaps = _align_input_to_channel_list(
+            cmap, atleast_1d(dataarray.coords[DimensionNames.Channel])
+        )
 
     cmaps = [
         None if c is None else (_rgb_to_cmap(c) if isinstance(c, tuple) else c)
@@ -149,3 +149,49 @@ def _rgb_to_cmap(
     }
     cmap_name = f"r{rgb[0]}_g{rgb[1]}_b{rgb[2]}"
     return colors.LinearSegmentedColormap(cmap_name, color_dict)
+
+
+def _align_input_to_channel_list(
+    input_value: Optional[Union[Any, List[Optional[Any]], Dict[str, Optional[Any]]]], 
+    channel_list: List[str]
+) -> Optional[List[Optional[Any]]]:
+    """
+    Aligns the input value to the channel_list. Broadcasting and
+    reordering are done when necessary. If the input value is None,
+    returns [None].
+    
+    Parameters
+    ----------
+    input_value: Any
+        The input value, can be None, any type, a list of any type or 
+        a dictionary of str to any type.
+    channel_list: List
+         A list of strings representing the channels.
+    
+    Returns:
+    - A list of length equal to the length of channel_list or None.
+    
+    """
+    
+    n = len(channel_list)
+    
+    # If input_value is of any type except list or dict, create a list 
+    # of length n with repeated values.
+    if not isinstance(input_value, (list, dict)):
+        return [input_value] * n
+    
+    # If input_value is a list, check its length and if it's not equal 
+    # to n, raise a ValueError.
+    elif isinstance(input_value, list):
+        if len(input_value) != n:
+            raise ValueError(
+                f"Length of input list {len(input_value)} must match "
+                f"the number of channels: {n}"
+            )
+        return input_value
+    
+    # If input_value is a dictionary, create a list of length n with 
+    # values from the dictionary or None if the key is not present in 
+    # the dictionary.
+    elif isinstance(input_value, dict):
+        return [input_value.get(ch, None) for ch in channel_list]
