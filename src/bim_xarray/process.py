@@ -180,19 +180,7 @@ def mask(
     if complement:
         mask = ~ mask
 
-    # This is a workaround for possibly having input mask with 
-    # dimensions without coordinates. Note, `.sel()` will fall back
-    # to using index if coordinate is not found.
-    # 
-    # This also assumes data and mask's common coords vars are each
-    # in the same units. 
-    # 
-    # Above two are non-issues if mask is specified as a coords var of 
-    # data.
-    masked = (data.where(mask.sel({d: data.coords[d] for d in mask.dims}), 
-                         other=other))
-    
-    return masked
+    return data.where(mask > 0, other=other)
 
 
 # def erode_by_disk(mask: Union[xr.DataArray, xr.Dataset], 
