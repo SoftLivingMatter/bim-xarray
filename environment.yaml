@@ -1,24 +1,15 @@
-name: bim_xarray
 channels:
   - conda-forge
 dependencies:
-  - ipython
-  - ipykernel
-  - pytest
-
-# scientific python stack
+  - python >=3.8, <3.11
+  - numpy
   - xarray
-  - dask
   - matplotlib
   - seaborn
-
-# image viewing and processing
   - bioformats_jar
   - napari
   - pyqt
   - scikit-image
-
-# pip installed
   - pip
   - pip:
     - aicsimageio

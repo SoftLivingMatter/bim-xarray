@@ -8,3 +8,18 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "bim-xarray"
 version = "0.1.1"
+requires-python = ">= 3.8, <3.11"
+dependencies = [
+    "numpy",
+    "xarray",
+    "aicsimageio",
+    "ome-types>=0.3.4,<0.4.0",
+    "pint",
+    "matplotlib",
+    "scikit-image",
+]
+
+[project.optional-dependencies]
+napari = ["napari", "pyqt5"]
+nd2 = ["aicsimageio[nd2]"]
+czi = ["aicspylibczi>=3.1.1", "fsspec>=2022.8.0"]
