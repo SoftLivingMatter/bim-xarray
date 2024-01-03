@@ -11,7 +11,12 @@ from .metadata import (label_channel_axis,
                        attach_physical_pixel_sizes,
                        attach_channel_colors,)
 from .plot import plot_by_channels
-from .napari import napari_view
+
+try:
+    from .napari import napari_view
+    napari_imported = True
+except ModuleNotFoundError as e:
+    napari_imported = False
 
 
 
@@ -50,7 +55,8 @@ class PlotMixin:
 
 
 class NapariMixin:
-    napari_view = _wrap_pipeable(napari_view)
+    if napari_imported:
+        napari_view = _wrap_pipeable(napari_view)
 
 
 @register_dataarray_accessor('bim')
